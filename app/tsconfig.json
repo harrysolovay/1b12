@@ -1,0 +1,14 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "jsx": "react-jsx",
+    "paths": {
+      "@/*": ["./*"]
+    },
+    "target": "ES2020"
+  },
+  "include": ["."],
+  "exclude": ["node_modules"],
+  "references": [{ "path": "../domain" }]
+}

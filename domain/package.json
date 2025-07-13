@@ -1,0 +1,15 @@
+{
+  "name": "@1b1/domain",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./Api": "./dist/Api.js",
+    "./V1ApiGroup": "./dist/V1ApiGroup.js",
+    "./errors": "./dist/errors.js",
+    "./middleware": "./dist/middleware.js"
+  },
+  "peerDependencies": {
+    "@1b1/experimental_client": "workspace:*",
+    "effect": "^3.16.12"
+  }
+}

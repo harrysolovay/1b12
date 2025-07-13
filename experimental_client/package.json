@@ -1,0 +1,12 @@
+{
+  "name": "@1b1/experimental_client",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./Generated": "./dist/Generated.js"
+  },
+  "peerDependencies": {
+    "@effect/platform": "^0.87.12",
+    "effect": "^3.16.12"
+  }
+}

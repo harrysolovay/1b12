@@ -1,0 +1,10 @@
+{
+  "/_not-found/page": "app/_not-found/page.js",
+  "/api/mesh/get-coinbase-balance/route": "app/api/mesh/get-coinbase-balance/route.js",
+  "/api/mesh/get-wallet-portfolio/route": "app/api/mesh/get-wallet-portfolio/route.js",
+  "/api/mesh/link-token/route": "app/api/mesh/link-token/route.js",
+  "/api/mesh/transfer-from-coinbase/mfa/route": "app/api/mesh/transfer-from-coinbase/mfa/route.js",
+  "/api/mesh/transfer-from-coinbase/route": "app/api/mesh/transfer-from-coinbase/route.js",
+  "/favicon.ico/route": "app/favicon.ico/route.js",
+  "/page": "app/page.js"
+}
