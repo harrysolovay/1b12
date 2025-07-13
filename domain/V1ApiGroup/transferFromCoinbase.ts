@@ -1,11 +1,11 @@
-import { ExecuteTransferResponse } from "@1b1/experimental_client/Generated"
+import { BrokerType, ExecuteTransferResponse } from "@1b1/experimental_client/Generated"
 import * as HttpApiEndpoint from "@effect/platform/HttpApiEndpoint"
 import * as Schema from "effect/Schema"
 
 export class TransferFromCoinbasePayload
   extends Schema.Class<TransferFromCoinbasePayload>("TransferFromCoinbasePayload")({
     accessToken: Schema.Redacted(Schema.String),
-    brokerType: Schema.String, // TODO: narrow
+    brokerType: BrokerType,
     amount: Schema.Number,
   })
 {}

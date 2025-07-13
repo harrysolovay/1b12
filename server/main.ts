@@ -1,4 +1,4 @@
-import { Api } from "@1b1/domain/Api"
+import { Api } from "@1b1/domain"
 import * as BunHttpServer from "@effect/platform-bun/BunHttpServer"
 import * as FetchHttpClient from "@effect/platform/FetchHttpClient"
 import * as HttpApiBuilder from "@effect/platform/HttpApiBuilder"

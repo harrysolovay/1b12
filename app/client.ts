@@ -1,4 +1,4 @@
-import { Api } from "@1b1/domain/Api"
+import { Api } from "@1b1/domain"
 import * as FetchHttpClient from "@effect/platform/FetchHttpClient"
 import * as HttpApiClient from "@effect/platform/HttpApiClient"
 import * as HttpClient from "@effect/platform/HttpClient"

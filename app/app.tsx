@@ -1,10 +1,9 @@
-"use client"
-
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { createLink, type LinkPayload } from "@meshconnect/web-link-sdk"
 import * as Effect from "effect/Effect"
 import * as Redacted from "effect/Redacted"
+import * as Struct from "effect/Struct"
 import { useCallback, useEffect, useState } from "react"
 import { Client } from "./client.ts"
 
@@ -184,7 +183,7 @@ export const App = () => {
                   const { balance } = await Client.make().v1.getCoinbaseBalance({
                     payload: {
                       accessToken: Redacted.make(accessToken),
-                      brokerType,
+                      brokerType: brokerType as never,
                     },
                   }).pipe(Effect.runPromise)
                   setEthBalance(balance)
@@ -217,7 +216,7 @@ export const App = () => {
                       const { executeTransferResult } = await Client.make().v1.transferFromCoinbaseMfa({
                         payload: {
                           accessToken: Redacted.make(accessToken),
-                          brokerType,
+                          brokerType: brokerType as never,
                           previewId: previewId!,
                           mfaCode,
                         },
@@ -305,31 +304,22 @@ export const App = () => {
               <DialogFooter>
                 <Button
                   onClick={async () => {
-                    const accessToken = localStorage.getItem(
-                      "coinbaseAccessToken",
-                    )
-                    const brokerType = localStorage.getItem("coinbaseBrokerType")
+                    const accessToken = localStorage.getItem("coinbaseAccessToken")!
+                    const brokerType = localStorage.getItem("coinbaseBrokerType")!
 
-                    const res = await fetch(
-                      "/api/mesh/transfer-from-coinbase/mfa",
-                      {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({
-                          accessToken,
-                          brokerType,
-                          previewId,
-                          mfaCode,
-                        }),
+                    const result = await Client.make().v1.transferFromCoinbaseMfa({
+                      payload: {
+                        accessToken: Redacted.make(accessToken),
+                        brokerType: brokerType as never,
+                        previewId: previewId!,
+                        mfaCode,
                       },
+                    }).pipe(
+                      Effect.map(Struct.get("executeTransferResult")),
+                      Effect.flatMap(Effect.fromNullable),
+                      Effect.runPromise,
                     )
-
-                    const json = await res.json()
-
-                    if (
-                      json.content?.executeTransferResult?.status
-                        === "succeeded"
-                    ) {
+                    if (result.status === "succeeded") {
                       setModalStage("success")
                     } else {
                       setTransferError("MFA failed. Try again.")

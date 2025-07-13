@@ -3,10 +3,7 @@
   "private": true,
   "type": "module",
   "exports": {
-    "./Api": "./dist/Api.js",
-    "./V1ApiGroup": "./dist/V1ApiGroup.js",
-    "./errors": "./dist/errors.js",
-    "./middleware": "./dist/middleware.js"
+    ".": "./dist/index.js"
   },
   "peerDependencies": {
     "@1b1/experimental_client": "workspace:*",

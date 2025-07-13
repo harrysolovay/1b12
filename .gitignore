@@ -1,5 +1,6 @@
 *.tsbuildinfo
 .env
+.next
 dist
 expo-env.d.ts
 node_modules
