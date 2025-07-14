@@ -26,7 +26,6 @@ await Effect.gen(function*() {
   )
   yield* fs.writeFileString("experimental_client/Generated.ts", code)
 }).pipe(
-  Effect.scoped,
   Effect.provide(BunContext.layer),
   Effect.provide(FetchHttpClient.layer),
   Effect.runPromise,

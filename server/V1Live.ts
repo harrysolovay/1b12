@@ -1,19 +1,16 @@
 import { Api, ApiError } from "@1b1/domain"
 import { make } from "@1b1/experimental_client/Generated"
-import { createClerkClient, verifyToken } from "@clerk/backend"
-import * as Cookies from "@effect/platform/Cookies"
+import { verifyToken } from "@clerk/backend"
 import * as HttpApiBuilder from "@effect/platform/HttpApiBuilder"
 import * as HttpClient from "@effect/platform/HttpClient"
 import * as HttpClientRequest from "@effect/platform/HttpClientRequest"
 import * as PgDrizzle from "@effect/sql-drizzle/Pg"
 import * as Effect from "effect/Effect"
 import { flow } from "effect/Function"
-import * as Record from "effect/Record"
 import * as Redacted from "effect/Redacted"
 import * as Schema from "effect/Schema"
-import { createRemoteJWKSet, type JWTPayload, jwtVerify } from "jose"
 import assert from "node:assert"
-import { ConfigService } from "../ConfigService.ts"
+import { ConfigService } from "./ConfigService.ts"
 
 // TODO: Replace with actual user ID retrieval logic
 const userId = "1b1"
@@ -24,18 +21,7 @@ export const V1ApiGroupLive = HttpApiBuilder.group(
   "v1",
   Effect.fn(function*(handlers) {
     const db = yield* PgDrizzle.PgDrizzle
-    const {
-      clientId,
-      secret,
-      destinationAddress,
-      clerkPublishableKey,
-      clerkSecret,
-    } = yield* ConfigService
-
-    const clerk = createClerkClient({
-      secretKey: Redacted.value(clerkSecret),
-      publishableKey: clerkPublishableKey,
-    })
+    const { clientId, secret, destinationAddress, clerkSecret } = yield* ConfigService
 
     const mesh = (yield* HttpClient.HttpClient).pipe(
       HttpClient.mapRequest(flow(
