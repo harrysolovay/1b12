@@ -3,6 +3,7 @@ linktoken
 meshconnect
 ossp
 pgvector
+repomix
 tmpfs
 traceparent
 wagmi

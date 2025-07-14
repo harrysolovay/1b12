@@ -24,7 +24,9 @@ export const App = () => {
     mutationFn: async () =>
       client.v1
         .createLinkToken({
-          payload: { _tag: "coinbase" },
+          payload: {
+            source: "coinbase",
+          },
         })
         .pipe(Effect.runPromise)
         .then(meshLinkRef.current.openLink),
@@ -62,7 +64,9 @@ export const App = () => {
     mutationFn: async () =>
       client.v1
         .createLinkToken({
-          payload: { _tag: "metamask" },
+          payload: {
+            source: "metamask",
+          },
         })
         .pipe(Effect.runPromise)
         .then(meshLinkRef.current.openLink),

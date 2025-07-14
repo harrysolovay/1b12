@@ -10,7 +10,6 @@
   "devDependencies": {
     "@effect/language-service": "^0.23.5",
     "@effect/platform-bun": "^0.69.16",
-    "@effect/sql-pg": "^0.42.0",
     "@tim-smart/openapi-gen": "^0.4.13",
     "@types/bun": "^1.2.18",
     "@types/node": "^22.16.3",

@@ -1,10 +1,10 @@
-import { BrokerType, ExecuteTransferResponse } from "@1b1/experimental_client/Generated"
+import { ExecuteTransferResponse, PreviewTransferResult } from "@1b1/experimental_client/Generated"
 import * as HttpApi from "@effect/platform/HttpApi"
 import * as HttpApiEndpoint from "@effect/platform/HttpApiEndpoint"
 import * as HttpApiError from "@effect/platform/HttpApiError"
 import * as HttpApiGroup from "@effect/platform/HttpApiGroup"
 import * as Schema from "effect/Schema"
-import { ApiError } from "./common.ts"
+import { ApiError, FundsSource } from "./common.ts"
 
 export class Api extends HttpApi.make("api").add(
   HttpApiGroup
@@ -40,39 +40,28 @@ export class Api extends HttpApi.make("api").add(
     )
     .add(
       HttpApiEndpoint
-        .post("transferFromCoinbase")`/transfer_from_coinbase`
+        .post("configureAndPreviewTransfer")`/configure_and_preview_transfer`
         .setPayload(Schema.Struct({
-          accessToken: Schema.Redacted(Schema.String),
-          brokerType: BrokerType,
-          amount: Schema.Number,
+          source: FundsSource,
         }))
-        .addSuccess(Schema.Union(
-          Schema.TaggedStruct("mfa", {
-            previewId: Schema.String,
-          }),
-          Schema.TaggedStruct("success", {
-            content: ExecuteTransferResponse,
-          }),
-        )),
+        .addSuccess(PreviewTransferResult),
     )
     .add(
       HttpApiEndpoint
-        .post("transferFromCoinbaseMfa")`/transfer_from_coinbase_mfa`
+        .post("executeTransfer")`/execute_transfer`
         .setPayload(Schema.Struct({
-          accessToken: Schema.Redacted(Schema.String),
-          brokerType: BrokerType,
+          source: FundsSource,
           previewId: Schema.String,
-          mfaCode: Schema.String,
+          mfaCode: Schema.String.pipe(Schema.optional),
         }))
         .addSuccess(ExecuteTransferResponse),
     )
     .add(
       HttpApiEndpoint
         .post("createLinkToken")`/create_link_token`
-        .setPayload(Schema.Union(
-          Schema.TaggedStruct("metamask", {}),
-          Schema.TaggedStruct("coinbase", {}),
-        ))
+        .setPayload(Schema.Struct({
+          source: FundsSource,
+        }))
         .addSuccess(Schema.String),
     )
     .prefix("/v1")

@@ -1,19 +1,17 @@
-import { Api } from "@1b1/domain"
+import { Api, FundsSource } from "@1b1/domain"
 import * as MeshClient from "@1b1/experimental_client/MeshClient"
 import * as HttpApiBuilder from "@effect/platform/HttpApiBuilder"
 import * as HttpApiError from "@effect/platform/HttpApiError"
 import * as Console from "effect/Console"
 import * as Effect from "effect/Effect"
-import * as Redacted from "effect/Redacted"
 import assert from "node:assert"
+import { currentUserId } from "./auth.ts"
 import { ConfigService } from "./ConfigService.ts"
-import { CurrentUserId } from "./CurrentUserId.ts"
 import { Db } from "./Db.ts"
-import { accessTokens } from "./tokens.ts"
+import { maybeAccessTokens } from "./tokens.ts"
 
-// TODO: Replace with actual user ID retrieval logic
-const userId = "1b1"
 const symbol = "ETH"
+const amount = .001
 
 export const ApiLive = HttpApiBuilder.group(
   Api,
@@ -50,11 +48,12 @@ export const ApiLive = HttpApiBuilder.group(
     return handlers
       .handle(
         "createLinkToken",
-        Effect.fn(function*({ payload: { _tag } }) {
+        Effect.fn(function*({ payload: { source } }) {
+          const clerkId = yield* currentUserId
           return yield* mesh["POST/api/v1/linktoken"]({
-            userId,
+            userId: clerkId,
             restrictMultipleAccounts: true,
-            integrationId: _tag === "coinbase" ? coinbaseIntegrationId : metamaskIntegrationId,
+            integrationId: source === "coinbase" ? coinbaseIntegrationId : metamaskIntegrationId,
             // TODO: why is this not represented in the OpenAPI spec?
             ...{
               enableTransfers: false,
@@ -69,31 +68,22 @@ export const ApiLive = HttpApiBuilder.group(
       .handle(
         "saveCoinbaseTokens",
         Effect.fn(function*({ payload }) {
-          console.log({ saveCoinbaseTokens: payload })
-          const clerkId = yield* CurrentUserId
-          if (typeof clerkId === "undefined") {
-            return yield* new HttpApiError.Unauthorized()
-          }
+          const clerkId = yield* currentUserId
           yield* db.setCoinbaseAccessTokenDetails(clerkId, payload)
         }),
       )
       .handle(
         "saveMetamaskToken",
         Effect.fn(function*({ payload }) {
-          console.log({ saveMetamaskToken: payload })
-          const clerkId = yield* CurrentUserId
-          if (typeof clerkId === "undefined") {
-            return yield* new HttpApiError.Unauthorized()
-          }
+          const clerkId = yield* currentUserId
           yield* db.setMetamaskAccessToken(clerkId, payload)
         }),
       )
       .handle(
         "getUserInfo",
         Effect.fn(function*() {
-          const tokens = yield* accessTokens.pipe(
+          const tokens = yield* maybeAccessTokens.pipe(
             Effect.tap(Console.log),
-            Effect.catchTag("NoSuchElementException", () => Effect.succeed(undefined)),
             Effect.orDie,
           )
           if (!tokens) {
@@ -145,11 +135,12 @@ export const ApiLive = HttpApiBuilder.group(
         }),
       )
       .handle(
-        "transferFromCoinbase",
-        Effect.fn(function*({ payload: { accessToken, amount, brokerType } }) {
+        "configureAndPreviewTransfer",
+        Effect.fn(function*({ payload: { source } }) {
+          const { fromAuthToken, fromType } = yield* transferCommon(source)
           yield* mesh["POST/api/v1/transfers/managed/configure"]({
-            fromAuthToken: Redacted.value(accessToken),
-            fromType: brokerType,
+            fromAuthToken,
+            fromType,
             symbol,
             amount,
             toAddresses: [
@@ -163,57 +154,30 @@ export const ApiLive = HttpApiBuilder.group(
           }).pipe(
             Effect.orDie,
           )
-          console.log({
-            fromAuthToken: Redacted.value(accessToken),
-            fromType: brokerType,
-            symbol,
-            amount,
-            networkId: ethereumNetworkId,
-            toAddress: destinationAddress,
-          })
-          const previewId = yield* mesh["POST/api/v1/transfers/managed/preview"]({
-            fromAuthToken: Redacted.value(accessToken),
-            fromType: brokerType,
+          return yield* mesh["POST/api/v1/transfers/managed/preview"]({
+            fromAuthToken,
+            fromType,
             symbol,
             amount,
             networkId: ethereumNetworkId,
             toAddress: destinationAddress,
           }).pipe(
-            Effect.tapError((error) => {
-              return Effect.logError(error)
-            }),
-            Effect.map(({ content }) => {
-              // console.log({ content }, "\n\n\n\n\n\n\n")
-              return content?.previewResult?.previewId
-            }),
+            Effect.tap(Console.log),
+            Effect.map(({ content }) => content?.previewResult),
             Effect.flatMap(Effect.fromNullable),
             Effect.orDie,
           )
-          console.log({ previewId })
-          const content = yield* mesh["POST/api/v1/transfers/managed/execute"]({
-            fromAuthToken: Redacted.value(accessToken),
-            fromType: brokerType,
-            previewId,
-            tryAnotherMfa: true,
-          }).pipe(
-            Effect.map(({ content }) => content),
-            Effect.flatMap(Effect.fromNullable),
-            Effect.orDie,
-          )
-          if (content.status === "mfaRequired") {
-            return { _tag: "mfa", previewId }
-          }
-          return { _tag: "success", content }
         }),
       )
       .handle(
-        "transferFromCoinbaseMfa",
-        Effect.fn(function*({ payload: { accessToken, brokerType, mfaCode, previewId } }) {
+        "executeTransfer",
+        Effect.fn(function*({ payload: { source, mfaCode, previewId } }) {
+          const { fromAuthToken, fromType } = yield* transferCommon(source)
           return yield* mesh["POST/api/v1/transfers/managed/execute"]({
-            fromAuthToken: Redacted.value(accessToken),
-            fromType: brokerType,
+            fromAuthToken,
+            fromType,
             previewId,
-            tryAnotherMfa: false,
+            tryAnotherMfa: mfaCode === undefined,
             mfaCode,
           }).pipe(
             Effect.map(({ content }) => content),
@@ -224,3 +188,15 @@ export const ApiLive = HttpApiBuilder.group(
       )
   }),
 )
+
+const transferCommon = (source: typeof FundsSource.Encoded) =>
+  Effect.all({
+    fromAuthToken: maybeAccessTokens.pipe(
+      Effect.map((tokens) => source === "coinbase" ? tokens?.coinbase : tokens?.metamask),
+      Effect.flatMap(Effect.fromNullable),
+      Effect.catchTag("NoSuchElementException", () => Effect.fail(new HttpApiError.Unauthorized())),
+    ),
+    fromType: Effect.succeed(
+      source === "coinbase" ? "coinbase" as const : "deFiWallet" as const,
+    ),
+  })

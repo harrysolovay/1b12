@@ -1,7 +1,7 @@
 import * as MeshClient from "@1b1/experimental_client/MeshClient"
 import * as Effect from "effect/Effect"
 import * as Schema from "effect/Schema"
-import { CurrentUserId } from "./CurrentUserId.ts"
+import { maybeCurrentUserId } from "./auth.ts"
 import { Db } from "./Db.ts"
 
 const decodeCoinbaseAccessTokenDetails = Schema.decodeUnknownSync(
@@ -11,10 +11,11 @@ const decodeCoinbaseAccessTokenDetails = Schema.decodeUnknownSync(
   }),
 )
 
-export const accessTokens = Effect.gen(function*() {
-  const clerkId = yield* CurrentUserId.pipe(
-    Effect.flatMap(Effect.fromNullable),
-  )
+export const maybeAccessTokens = Effect.gen(function*() {
+  const clerkId = yield* maybeCurrentUserId
+  if (!clerkId) {
+    return undefined
+  }
   const mesh = yield* MeshClient.MeshClient
   const db = yield* Db
   let {
@@ -36,6 +37,7 @@ export const accessTokens = Effect.gen(function*() {
           refreshToken: content?.refreshToken,
         })
       ),
+      Effect.orDie,
     )
     yield* db.setCoinbaseAccessTokenDetails(clerkId, coinbaseAccessTokenDetails)
   }

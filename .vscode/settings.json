@@ -23,16 +23,5 @@
   "editor.formatOnSave": true,
   "editor.tabSize": 2,
   "dprint.path": "node_modules/.bin/dprint",
-  "sqltools.connections": [
-    {
-      "server": "localhost",
-      "port": 54321,
-      "driver": "PostgreSQL",
-      "name": "PostgreSQL Local",
-      "database": "database",
-      "username": "postgres",
-      "password": "password"
-    }
-  ],
   "typescript.tsdk": "node_modules/typescript/lib"
 }

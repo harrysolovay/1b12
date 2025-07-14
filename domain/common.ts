@@ -17,6 +17,8 @@ export class ApiError extends Schema.TaggedError<ApiError>("ApiError")("ApiError
   inner: Schema.Unknown.pipe(Schema.optional),
 }) {}
 
+export const FundsSource = Schema.Literal("metamask", "coinbase")
+
 // export class CurrentUser extends Context.Tag("CurrentUser")<CurrentUser, {
 //   clerkId: ClerkId
 // }>() {}
