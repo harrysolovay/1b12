@@ -1,209 +1,128 @@
 import { Button } from "@/components/ui/button"
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { createLink, type LinkPayload } from "@meshconnect/web-link-sdk"
+import { createLink } from "@meshconnect/web-link-sdk"
 import * as Effect from "effect/Effect"
-import * as Redacted from "effect/Redacted"
-import * as Struct from "effect/Struct"
-import { useCallback, useEffect, useState } from "react"
-import { Client } from "./client.ts"
-
-type ModalStage = "summary" | "mfa" | "success" | "error"
+import { useEffect, useRef, useState } from "react"
+import { client } from "./client.ts"
 
 export const App = () => {
-  const [isCoinbaseConnected, setIsCoinbaseConnected] = useState<boolean>(false)
-  const [ethBalance, setEthBalance] = useState<number | null>(null)
+  const [coinbaseAccessTokenDetails, setCoinbaseAccessTokenDetails] = useState<{
+    accessToken: string
+    refreshToken: string
+  }>()
+  const [metamaskAccessToken, setMetamaskAccessToken] = useState<string>()
 
-  const [previewId, setPreviewId] = useState<string | null>(null)
-  const [mfaRequired, setMfaRequired] = useState<boolean>(false)
-  const [mfaCode, setMfaCode] = useState<string>("")
-
-  const [isModalOpen, setIsModalOpen] = useState(false)
-  const [modalStage, setModalStage] = useState<ModalStage>("summary")
-  const [transferError, setTransferError] = useState<string | null>(null)
-
-  const [isDeFiWalletConnected, setIsDeFiWalletConnected] = useState(false)
-  const [walletUSDC, setWalletUSDC] = useState<number | null>(null)
-
-  const fetchWalletHoldings = async () => {
-    const accessToken = localStorage.getItem("defiAccessToken")
-    if (!accessToken) return
-    const res = await fetch("/api/mesh/get-wallet-portfolio", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ accessToken }),
-    })
-
-    const json = await res.json()
-    console.log(json)
-    const { balance } = json
-    setWalletUSDC(balance)
-  }
-
-  useEffect(() => {
-    if (isDeFiWalletConnected) {
-      fetchWalletHoldings()
-    }
-  }, [isDeFiWalletConnected])
-
-  const meshLinkRef = createLink({
-    clientId: process.env.NEXT_PUBLIC_MESH_CLIENT_ID!,
-    onIntegrationConnected: (pl: LinkPayload) => {
-      console.log("Connected:", pl)
-      if (pl.accessToken?.brokerType === "deFiWallet") {
-        const tokenObj = pl.accessToken.accountTokens?.[0]
-        if (tokenObj) {
-          localStorage.setItem("defiAccessToken", tokenObj.accessToken)
-          setIsDeFiWalletConnected(true)
-        }
-      }
-
-      if (pl.accessToken?.brokerType === "coinbase") {
-        localStorage.setItem("coinbaseConnected", "true")
-
-        const tokenObj = pl.accessToken.accountTokens?.[0]
-        if (tokenObj) {
-          localStorage.setItem("coinbaseAccessToken", tokenObj.accessToken)
-          localStorage.setItem("coinbaseBrokerType", pl.accessToken.brokerType)
-        }
-
-        setIsCoinbaseConnected(true)
-      }
-    },
-    onTransferFinished: (tx) => {
-      console.log("Transfer:", tx)
-      fetchWalletHoldings()
-    },
-    onExit: (err, summary) => console.log("Closed:", err, summary),
+  const [balances, setBalances] = useState<{
+    coinbase?: number
+    metamask?: number
+  }>({
+    coinbase: 0,
+    metamask: 0,
   })
 
-  const handlePayWithDeFiWallet = useCallback(async () => {
-    const { linkToken } = await Client.make().v1.createLinkToken({
-      payload: {
-        userId: "",
-        enableTransfers: false,
-        integrationId: "34aeb688-decb-485f-9d80-b66466783394",
-        transferOptions: {
-          toAddresses: [
-            {
-              networkId: "e3c7fdd8-b1fc-4e51-85ae-bb276e075611",
-              symbol: "ETH",
-              address: process.env.NEXT_PUBLIC_STORE_WALLET_ADDRESS!,
-            },
-          ],
+  const refreshCoinbaseTokenDetails = async () => {
+    const details = coinbaseAccessTokenDetails
+      ? await client.v1
+        .refreshCoinbaseToken({
+          payload: coinbaseAccessTokenDetails,
+        })
+        .pipe(Effect.runPromise)
+      : undefined
+    setCoinbaseAccessTokenDetails(details)
+    return details
+  }
+
+  const refreshBalances = async () => {
+    const details = await refreshCoinbaseTokenDetails()
+    return client.v1
+      .getBalances({
+        payload: {
+          coinbase: details?.accessToken,
+          metamask: metamaskAccessToken,
         },
-      },
-    }).pipe(Effect.runPromise)
-    meshLinkRef.openLink(linkToken)
-  }, [meshLinkRef])
-
-  const handleConnectCoinbase = useCallback(async () => {
-    const { linkToken } = await Client.make().v1.createLinkToken({
-      payload: {
-        userId: "end-user-123",
-        integrationId: process.env.NEXT_PUBLIC_COINBASE_ID!,
-        enableTransfers: false,
-      },
-    }).pipe(Effect.runPromise)
-
-    meshLinkRef.openLink(linkToken)
-  }, [meshLinkRef])
-
-  const handleDisconnectCoinbase = () => {
-    localStorage.removeItem("coinbaseConnected")
-    setIsCoinbaseConnected(false)
-    setEthBalance(null)
-    console.log("Coinbase disconnected")
+      })
+      .pipe(Effect.runPromise)
+      .then(setBalances)
   }
 
   useEffect(() => {
-    const coinbaseConnected = localStorage.getItem("coinbaseConnected") === "true"
-    if (coinbaseConnected) setIsCoinbaseConnected(true)
-  }, [])
+    if (coinbaseAccessTokenDetails || metamaskAccessToken) {
+      refreshBalances()
+    }
+  }, [coinbaseAccessTokenDetails, metamaskAccessToken])
+
+  const meshLinkRef = useRef(createLink({
+    clientId: import.meta.env.VITE_MESH_CLIENT_ID,
+    onIntegrationConnected: (payload) => {
+      const { accessToken } = payload
+      const token = accessToken?.accountTokens[0]
+      if (!token) throw new Error()
+      switch (accessToken?.brokerName) {
+        case "Coinbase": {
+          setCoinbaseAccessTokenDetails({
+            accessToken: token.accessToken,
+            refreshToken: token.refreshToken!,
+          })
+          break
+        }
+        case "MetaMask": {
+          setMetamaskAccessToken(token.accessToken)
+          break
+        }
+      }
+    },
+    onTransferFinished: (transferFinishedPayload) => {
+      console.log({ transferFinishedPayload })
+    },
+    onExit: (error, summary) => {
+      console.log({ error, summary })
+    },
+  }))
+
+  const OpenLink = (_tag: "metamask" | "coinbase") => async () =>
+    client.v1
+      .createLinkToken({
+        payload: { // TODO: fix typing
+          _tag: _tag as never,
+        },
+      })
+      .pipe(Effect.runPromise)
+      .then(meshLinkRef.current.openLink)
 
   return (
     <>
       <div className="max-w-4xl mx-auto p-6 space-y-8">
         <div className="flex flex-col sm:flex-row gap-4 justify-end pt-6">
-          <Button
-            onClick={handlePayWithDeFiWallet}
-            className="w-full sm:w-auto"
-          >
-            Top up with my DeFi Wallet 🦊
-          </Button>
-          <Button
-            onClick={isCoinbaseConnected
-              ? handleDisconnectCoinbase
-              : handleConnectCoinbase}
-            className="w-full sm:w-auto"
-          >
-            {isCoinbaseConnected
-              ? "Disconnect Coinbase ❌"
-              : "Connect my Coinbase Account 🔵"}
-          </Button>
+          <div>
+            MetaMask (Balance: {balances.metamask})
+            <Button onClick={OpenLink("metamask")} className="w-full sm:w-auto">
+              {metamaskAccessToken ? "Disconnect MetaMask" : "Connect MetaMask"}
+            </Button>
+          </div>
+          <div>
+            Coinbase (Balance: {balances.coinbase})
+            <Button onClick={OpenLink("coinbase")}>
+              {coinbaseAccessTokenDetails ? "Disconnect Coinbase" : "Connect Coinbase"}
+            </Button>
+          </div>
         </div>
 
-        {isDeFiWalletConnected && (
-          <div className="mt-8 p-4 border rounded-md shadow-md bg-white/10">
-            <h2 className="text-xl font-semibold mb-2">
-              MetaMask USDC Balance
-            </h2>
-            <p className="text-lg">
-              {typeof walletUSDC === "number"
-                ? `${walletUSDC.toFixed(4)} USDC`
-                : walletUSDC === null
-                ? "Loading..."
-                : "Balance unavailable"}
-            </p>
-          </div>
-        )}
-
-        {isCoinbaseConnected && (
+        {
+          /* {coinbaseAccessToken && (
           <div className="mt-8 p-4 border rounded-md shadow-md bg-white/10">
             <h2 className="text-xl font-semibold mb-2">
               Coinbase USDC Balance
             </h2>
             <p className="text-lg mb-4">
-              {ethBalance !== null
-                ? `${ethBalance} ETH`
+              {balances.coinbase !== null
+                ? `${balances.coinbase} ETH`
                 : "Balance not loaded"}
             </p>
             <div className="flex gap-4">
-              <Button
-                variant="outline"
-                onClick={async () => {
-                  const accessToken = localStorage.getItem(
-                    "coinbaseAccessToken",
-                  )
-                  const brokerType = localStorage.getItem("coinbaseBrokerType")
-                  if (!accessToken || !brokerType) {
-                    console.log("Tokens not found, returning...")
-                    return
-                  }
-
-                  const { balance } = await Client.make().v1.getCoinbaseBalance({
-                    payload: {
-                      accessToken: Redacted.make(accessToken),
-                      brokerType: brokerType as never,
-                    },
-                  }).pipe(Effect.runPromise)
-                  setEthBalance(balance)
-                }}
-              >
-                Load Balance
-              </Button>
-              <Button
-                onClick={() => {
-                  setModalStage("summary")
-                  setIsModalOpen(true)
-                }}
-              >
-                Pay with Coinbase 💳
-              </Button>
               {mfaRequired && (
                 <div className="mt-4">
                   <input
                     type="text"
-                    placeholder="Código MFA"
+                    placeholder="MFA"
                     value={mfaCode}
                     onChange={(e) => setMfaCode(e.target.value)}
                     className="border p-2 rounded"
@@ -213,7 +132,7 @@ export const App = () => {
                       const accessToken = localStorage.getItem("coinbaseAccessToken")!
                       const brokerType = localStorage.getItem("coinbaseBrokerType")!
 
-                      const { executeTransferResult } = await Client.make().v1.transferFromCoinbaseMfa({
+                      const { executeTransferResult } = await client.v1.transferFromCoinbaseMfa({
                         payload: {
                           accessToken: Redacted.make(accessToken),
                           brokerType: brokerType as never,
@@ -226,23 +145,25 @@ export const App = () => {
                       console.log({ executeTransferResult })
                     }}
                   >
-                    Confirmar MFA
+                    Confirm MFA
                   </Button>
                 </div>
               )}
             </div>
           </div>
-        )}
+        )} */
+        }
       </div>
 
-      <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
+      {
+        /* <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>
               {modalStage === "summary" && "Confirm Your Payment"}
               {modalStage === "mfa" && "Enter MFA Code"}
-              {modalStage === "success" && "✅ Payment Successful"}
-              {modalStage === "error" && "❌ Payment Failed"}
+              {modalStage === "success" && "Payment Successful"}
+              {modalStage === "error" && "Payment Failed"}
             </DialogTitle>
           </DialogHeader>
 
@@ -252,33 +173,20 @@ export const App = () => {
               <DialogFooter>
                 <Button
                   onClick={async () => {
-                    const accessToken = localStorage.getItem(
-                      "coinbaseAccessToken",
-                    )
-                    const brokerType = localStorage.getItem("coinbaseBrokerType")
+                    const accessToken = localStorage.getItem("coinbaseAccessToken")!
+                    const brokerType = localStorage.getItem("coinbaseBrokerType")!
 
-                    const res = await fetch(
-                      "/api/mesh/transfer-from-coinbase",
-                      {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({
-                          accessToken,
-                          brokerType,
-                          amount: .0001,
-                        }),
+                    const result = await client.v1.transferFromCoinbase({
+                      payload: {
+                        accessToken: Redacted.make(accessToken),
+                        brokerType: brokerType as never,
+                        amount: .0001,
                       },
-                    )
-
-                    const json = await res.json()
-
-                    if (json.mfaRequired) {
-                      setPreviewId(json.previewId)
+                    }).pipe(Effect.runPromise)
+                    if (result._tag === "mfa") {
+                      setPreviewId(result.previewId)
                       setModalStage("mfa")
-                    } else if (
-                      json.content?.executeTransferResult?.status
-                        === "succeeded"
-                    ) {
+                    } else if (result.content.status === "succeeded") {
                       setModalStage("success")
                     } else {
                       setTransferError("Transfer failed. Try again.")
@@ -307,7 +215,7 @@ export const App = () => {
                     const accessToken = localStorage.getItem("coinbaseAccessToken")!
                     const brokerType = localStorage.getItem("coinbaseBrokerType")!
 
-                    const result = await Client.make().v1.transferFromCoinbaseMfa({
+                    const result = await client.v1.transferFromCoinbaseMfa({
                       payload: {
                         accessToken: Redacted.make(accessToken),
                         brokerType: brokerType as never,
@@ -351,7 +259,8 @@ export const App = () => {
             </div>
           )}
         </DialogContent>
-      </Dialog>
+      </Dialog> */
+      }
     </>
   )
 }

@@ -1,4 +1,4 @@
-import { Api, ApiError } from "@1b1/domain"
+import { Api } from "@1b1/domain"
 import { make } from "@1b1/experimental_client/Generated"
 import * as HttpApiBuilder from "@effect/platform/HttpApiBuilder"
 import * as HttpClient from "@effect/platform/HttpClient"
@@ -6,7 +6,13 @@ import * as HttpClientRequest from "@effect/platform/HttpClientRequest"
 import * as Effect from "effect/Effect"
 import { flow } from "effect/Function"
 import * as Redacted from "effect/Redacted"
+import assert from "node:assert"
+import type { access } from "node:fs"
 import { ConfigService } from "../ConfigService.ts"
+
+// TODO: Replace with actual user ID retrieval logic
+const userId = "1b1"
+const symbol = "ETH"
 
 export const V1ApiGroupLive = HttpApiBuilder.group(
   Api,
@@ -25,83 +31,94 @@ export const V1ApiGroupLive = HttpApiBuilder.group(
       make,
     )
 
-    const { networkId, symbol } = yield* mesh["GET/api/v1/transfers/managed/networks"]().pipe(
-      Effect.map(({ content }) => content?.networks?.find((network) => network.name === "Ethereum")),
+    const ethereumNetworkId = yield* mesh["GET/api/v1/transfers/managed/networks"]().pipe(
+      Effect.map(({ content }) => content?.networks?.find((network) => network.name === "Ethereum")?.id),
       Effect.flatMap(Effect.fromNullable),
-      Effect.flatMap(({ id, nativeSymbol }) =>
-        Effect.all({
-          networkId: Effect.fromNullable(id),
-          symbol: Effect.fromNullable(nativeSymbol),
-        })
-      ),
+    )
+
+    const integrations = yield* mesh["GET/api/v1/transfers/managed/integrations"]().pipe(
+      Effect.map(({ content }) => content?.integrations),
+      Effect.flatMap(Effect.fromNullable),
+      Effect.orDie,
+    )
+
+    let coinbaseIntegrationId: string | undefined
+    let metamaskIntegrationId: string | undefined
+    for (const { name, id } of integrations) {
+      if (name === "Coinbase") {
+        coinbaseIntegrationId = id!
+      } else if (name === "MetaMask") {
+        metamaskIntegrationId = id!
+      }
+    }
+    assert(
+      typeof coinbaseIntegrationId === "string" && typeof metamaskIntegrationId === "string",
     )
 
     return handlers
       .handle(
         "createLinkToken",
-        Effect.fn(function*({ payload: { integrationId, transferOptions, userId, enableTransfers } }) {
-          const linkToken = yield* mesh["POST/api/v1/linktoken"]({
+        Effect.fn(function*({ payload: { _tag } }) {
+          return yield* mesh["POST/api/v1/linktoken"]({
             userId,
             restrictMultipleAccounts: true,
-            integrationId,
-            transferOptions,
-            ...{ enableTransfers } as {}, // TODO
+            integrationId: _tag === "coinbase" ? coinbaseIntegrationId : metamaskIntegrationId,
+            // TODO: why is this not represented in the OpenAPI spec?
+            ...{
+              enableTransfers: false,
+            } as {},
           }).pipe(
             Effect.map(({ content }) => content?.linkToken),
             Effect.flatMap(Effect.fromNullable),
-            Effect.mapError((inner) => new ApiError({ inner })),
-          )
-          return { linkToken }
-        }),
-      )
-      .handle(
-        "getCoinbaseBalance",
-        Effect.fn(function*({ payload: { accessToken, brokerType } }) {
-          const balance = yield* mesh["POST/api/v1/holdings/get"]({
-            authToken: Redacted.value(accessToken),
-            type: brokerType,
-            includeMarketValue: true,
-          }).pipe(
-            Effect.map(({ content }) =>
-              content?.cryptocurrencyPositions?.find(({ symbol }) => symbol === "ETH")?.amount ?? 0
-            ),
-            Effect.flatMap(Effect.fromNullable),
             Effect.orDie,
           )
-          return { balance }
         }),
       )
       .handle(
-        "getNetworksAndIntegrations",
-        Effect.fn(function*() {
-          return yield* Effect.all(
-            {
-              networks: mesh["GET/api/v1/transfers/managed/networks"]().pipe(
-                Effect.map(({ content }) => content?.networks),
-                Effect.flatMap(Effect.fromNullable),
-              ),
-              integrations: mesh["GET/api/v1/transfers/managed/integrations"]().pipe(
-                Effect.map(({ content }) => content?.integrations),
-                Effect.flatMap(Effect.fromNullable),
-              ),
-            },
-            { concurrency: "unbounded" },
-          ).pipe(Effect.orDie)
-        }),
-      )
-      .handle(
-        "getWalletPortfolio",
-        Effect.fn(function*({ payload: { accessToken } }) {
-          const balance = yield* mesh["POST/api/v1/holdings/get"]({
-            authToken: Redacted.value(accessToken),
-            type: "deFiWallet",
+        "refreshCoinbaseToken",
+        Effect.fn(function*({ payload: { accessToken, refreshToken } }) {
+          return yield* mesh["POST/api/v1/token/refresh"]({
+            type: "coinbase",
+            refreshToken,
+            accessToken,
           }).pipe(
-            Effect.map(({ content }) =>
-              content?.cryptocurrencyPositions?.find(({ symbol }) => symbol === "ETH")?.amount ?? 0
-            ),
+            Effect.map(({ content }) => ({
+              accessToken: content?.accessToken!,
+              refreshToken: content?.refreshToken!,
+            })),
             Effect.orDie,
           )
-          return { balance }
+        }),
+      )
+      .handle(
+        "getBalances",
+        Effect.fn(function*({ payload: { coinbase, metamask } }) {
+          return yield* Effect.all({
+            coinbase: coinbase
+              ? mesh["POST/api/v1/holdings/get"]({
+                authToken: coinbase,
+                type: "coinbase",
+                includeMarketValue: true,
+              }).pipe(
+                Effect.map(({ content }) =>
+                  content?.cryptocurrencyPositions?.find(({ symbol: symbol_ }) => symbol === symbol_)?.amount ?? 0
+                ),
+              )
+              : Effect.succeed(0),
+            metamask: metamask
+              ? mesh["POST/api/v1/holdings/get"]({
+                authToken: metamask,
+                type: "deFiWallet",
+                includeMarketValue: true,
+              }).pipe(
+                Effect.map(({ content }) =>
+                  content?.cryptocurrencyPositions?.find(({ symbol: symbol_ }) => symbol === symbol_)?.amount ?? 0
+                ),
+              )
+              : Effect.succeed(0),
+          }).pipe(
+            Effect.orDie,
+          )
         }),
       )
       .handle(
@@ -114,26 +131,43 @@ export const V1ApiGroupLive = HttpApiBuilder.group(
             amount,
             toAddresses: [
               {
-                networkId,
+                networkId: ethereumNetworkId,
                 symbol,
                 address: destinationAddress,
               },
             ],
-            networkId,
-          }).pipe(Effect.orDie)
+            networkId: ethereumNetworkId,
+          }).pipe(
+            Effect.orDie,
+          )
+          console.log({
+            fromAuthToken: Redacted.value(accessToken),
+            fromType: brokerType,
+            symbol,
+            amount,
+            networkId: ethereumNetworkId,
+            toAddress: destinationAddress,
+          })
           const previewId = yield* mesh["POST/api/v1/transfers/managed/preview"]({
             fromAuthToken: Redacted.value(accessToken),
             fromType: brokerType,
             symbol,
             amount,
-            networkId,
+            networkId: ethereumNetworkId,
             toAddress: destinationAddress,
           }).pipe(
-            Effect.map(({ content }) => content?.previewResult?.previewId),
+            Effect.tapError((error) => {
+              return Effect.logError(error)
+            }),
+            Effect.map(({ content }) => {
+              // console.log({ content }, "\n\n\n\n\n\n\n")
+              return content?.previewResult?.previewId
+            }),
             Effect.flatMap(Effect.fromNullable),
             Effect.orDie,
           )
-          return yield* mesh["POST/api/v1/transfers/managed/execute"]({
+          console.log({ previewId })
+          const content = yield* mesh["POST/api/v1/transfers/managed/execute"]({
             fromAuthToken: Redacted.value(accessToken),
             fromType: brokerType,
             previewId,
@@ -143,6 +177,10 @@ export const V1ApiGroupLive = HttpApiBuilder.group(
             Effect.flatMap(Effect.fromNullable),
             Effect.orDie,
           )
+          if (content.status === "mfaRequired") {
+            return { _tag: "mfa", previewId }
+          }
+          return { _tag: "success", content }
         }),
       )
       .handle(

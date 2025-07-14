@@ -19,7 +19,7 @@ HttpApiBuilder.serve().pipe(
   HttpServer.withLogAddress,
   Layer.provide(HttpApiBuilder.middlewareCors()),
   Layer.provide(HttpApiSwagger.layer()),
-  Layer.provide(OtelLive),
+  // Layer.provide(OtelLive),
   Layer.provide(ApiLive),
   Layer.provide(CorsLive),
   Layer.provide(ConfigService.Default),
