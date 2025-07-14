@@ -5,11 +5,7 @@
   "scripts": {
     "prepare": "ts-patch install -s",
     "build": "tspc -b",
-    "watch": "tspc -b -w",
-    "dc:up": "docker compose up",
-    "dc:rm": "docker compose down -v",
-    "dc:re": "bun dc:rm && bun dc:up",
-    "db:init": "rm -rf migrations && bun tasks/ensure_uuid_extension && drizzle-kit generate && drizzle-kit migrate"
+    "watch": "tspc -b -w"
   },
   "devDependencies": {
     "@effect/language-service": "^0.23.5",
@@ -20,7 +16,6 @@
     "@types/node": "^22.16.3",
     "@types/react": "~19.0.14",
     "dprint": "^0.50.1",
-    "drizzle-kit": "^0.31.4",
     "effect": "^3.16.13",
     "ts-patch": "^3.3.0",
     "typescript": "^5.8.3"

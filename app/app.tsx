@@ -1,71 +1,85 @@
 import { Button } from "@/components/ui/button"
 import { SignedIn, SignedOut, SignInButton, useAuth, UserButton } from "@clerk/clerk-react"
-import { createLink } from "@meshconnect/web-link-sdk"
+import { type AccountToken, createLink } from "@meshconnect/web-link-sdk"
 import * as Effect from "effect/Effect"
-import { useEffect, useRef, useState } from "react"
+import { useRef } from "react"
+import { useMutation, useQuery, useQueryClient } from "react-query"
 import { client } from "./client.ts"
 
 export const App = () => {
-  const { isSignedIn, getToken } = useAuth()
+  const queryClient = useQueryClient()
+  const { isSignedIn } = useAuth()
 
-  const [coinbaseAccessTokenDetails, setCoinbaseAccessTokenDetails] = useState<{
-    accessToken: string
-    refreshToken: string
-  }>()
-  const [metamaskAccessToken, setMetamaskAccessToken] = useState<string>()
+  const { data: userInfo } = useQuery({
+    queryKey: ["balances", isSignedIn],
+    queryFn: async () =>
+      isSignedIn
+        ? client.v1.getUserInfo().pipe(Effect.runPromise)
+        : undefined,
+  })
+  console.log({ userInfo })
 
-  const [balances, setBalances] = useState<{
-    coinbase?: number
-    metamask?: number
-  }>()
+  const createCoinbaseLinkToken = useMutation({
+    mutationKey: ["createCoinbaseLinkToken"],
+    mutationFn: async () =>
+      client.v1
+        .createLinkToken({
+          payload: { _tag: "coinbase" },
+        })
+        .pipe(Effect.runPromise)
+        .then(meshLinkRef.current.openLink),
+  })
 
-  // const refreshCoinbaseTokenDetails = async () => {
-  //   const details = coinbaseAccessTokenDetails
-  //     ? await client.v1
-  //       .refreshCoinbaseToken({
-  //         payload: coinbaseAccessTokenDetails,
-  //       })
-  //       .pipe(Effect.runPromise)
-  //     : undefined
-  //   setCoinbaseAccessTokenDetails(details)
-  //   return details
-  // }
+  const saveCoinbaseAccessToken = useMutation({
+    mutationKey: ["saveCoinbaseAccessToken"],
+    mutationFn: async (token: AccountToken) =>
+      client.v1
+        .saveCoinbaseTokens({
+          payload: {
+            accessToken: token.accessToken,
+            refreshToken: token.refreshToken!,
+          },
+        })
+        .pipe(Effect.runPromise),
+    onSuccess: () => queryClient.invalidateQueries(["balances"]),
+  })
 
-  const refreshBalances = async () => {
-    // const details = await refreshCoinbaseTokenDetails()
-    return client.v1
-      .getBalances({
-        payload: {
-          coinbase: coinbaseAccessTokenDetails?.accessToken,
-          metamask: metamaskAccessToken,
-        },
-      })
-      .pipe(Effect.runPromise)
-      .then(setBalances)
-  }
+  const saveMetamaskAccessToken = useMutation({
+    mutationKey: ["saveCoinbaseAccessToken"],
+    mutationFn: async (token: AccountToken) =>
+      client.v1
+        .saveMetamaskToken({
+          payload: {
+            accessToken: token.accessToken,
+          },
+        })
+        .pipe(Effect.runPromise),
+    onSuccess: () => queryClient.invalidateQueries(["balances"]),
+  })
 
-  useEffect(() => {
-    if (coinbaseAccessTokenDetails || metamaskAccessToken) {
-      refreshBalances()
-    }
-  }, [coinbaseAccessTokenDetails, metamaskAccessToken])
+  const createMetamaskLinkToken = useMutation({
+    mutationKey: ["createMetamaskLinkToken"],
+    mutationFn: async () =>
+      client.v1
+        .createLinkToken({
+          payload: { _tag: "metamask" },
+        })
+        .pipe(Effect.runPromise)
+        .then(meshLinkRef.current.openLink),
+  })
 
   const meshLinkRef = useRef(createLink({
     clientId: import.meta.env.VITE_MESH_CLIENT_ID,
-    onIntegrationConnected: (payload) => {
+    onIntegrationConnected: async (payload) => {
       const { accessToken } = payload
-      const token = accessToken?.accountTokens[0]
-      if (!token) throw new Error()
+      const token = accessToken?.accountTokens[0]!
       switch (accessToken?.brokerName) {
         case "Coinbase": {
-          setCoinbaseAccessTokenDetails({
-            accessToken: token.accessToken,
-            refreshToken: token.refreshToken!,
-          })
+          saveCoinbaseAccessToken.mutate(token)
           break
         }
         case "MetaMask": {
-          setMetamaskAccessToken(token.accessToken)
+          saveMetamaskAccessToken.mutate(token)
           break
         }
       }
@@ -77,197 +91,30 @@ export const App = () => {
       console.log({ error, summary })
     },
   }))
-
-  const OpenLink = (_tag: "metamask" | "coinbase") => async () =>
-    client.v1
-      .createLinkToken({
-        payload: { // TODO: fix typing
-          _tag: _tag as never,
-        },
-      })
-      .pipe(Effect.runPromise)
-      .then(meshLinkRef.current.openLink)
-
   return (
-    <>
+    <div>
       <SignedOut>
         <SignInButton />
       </SignedOut>
       <SignedIn>
         <UserButton />
       </SignedIn>
-      <button onClick={refreshBalances}>Refresh</button>
       <div className="max-w-4xl mx-auto p-6 space-y-8">
         <div className="flex flex-col sm:flex-row gap-4 justify-end pt-6">
           <div>
-            MetaMask (Balance: {balances?.metamask})
-            <Button onClick={OpenLink("metamask")} className="w-full sm:w-auto">
-              {metamaskAccessToken ? "Disconnect MetaMask" : "Connect MetaMask"}
-            </Button>
+            <div>MetaMask</div>
+            {userInfo?.metamask.connected
+              ? `(Balance: ${userInfo.metamask.balance})`
+              : <Button onClick={() => createMetamaskLinkToken.mutate()}>Connect MetaMask</Button>}
           </div>
           <div>
-            Coinbase (Balance: {balances?.coinbase})
-            <Button onClick={OpenLink("coinbase")}>
-              {coinbaseAccessTokenDetails ? "Disconnect Coinbase" : "Connect Coinbase"}
-            </Button>
+            Coinbase
+            {userInfo?.coinbase.connected
+              ? `(Balance: ${userInfo.coinbase.balance})`
+              : <Button onClick={() => createCoinbaseLinkToken.mutate()}>Connect Coinbase</Button>}
           </div>
         </div>
-
-        {
-          /* {coinbaseAccessToken && (
-          <div className="mt-8 p-4 border rounded-md shadow-md bg-white/10">
-            <h2 className="text-xl font-semibold mb-2">
-              Coinbase USDC Balance
-            </h2>
-            <p className="text-lg mb-4">
-              {balances.coinbase !== null
-                ? `${balances.coinbase} ETH`
-                : "Balance not loaded"}
-            </p>
-            <div className="flex gap-4">
-              {mfaRequired && (
-                <div className="mt-4">
-                  <input
-                    type="text"
-                    placeholder="MFA"
-                    value={mfaCode}
-                    onChange={(e) => setMfaCode(e.target.value)}
-                    className="border p-2 rounded"
-                  />
-                  <Button
-                    onClick={async () => {
-                      const accessToken = localStorage.getItem("coinbaseAccessToken")!
-                      const brokerType = localStorage.getItem("coinbaseBrokerType")!
-
-                      const { executeTransferResult } = await client.v1.transferFromCoinbaseMfa({
-                        payload: {
-                          accessToken: Redacted.make(accessToken),
-                          brokerType: brokerType as never,
-                          previewId: previewId!,
-                          mfaCode,
-                        },
-                      }).pipe(Effect.runPromise)
-                      setMfaRequired(false)
-                      setMfaCode("")
-                      console.log({ executeTransferResult })
-                    }}
-                  >
-                    Confirm MFA
-                  </Button>
-                </div>
-              )}
-            </div>
-          </div>
-        )} */
-        }
       </div>
-
-      {
-        /* <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>
-              {modalStage === "summary" && "Confirm Your Payment"}
-              {modalStage === "mfa" && "Enter MFA Code"}
-              {modalStage === "success" && "Payment Successful"}
-              {modalStage === "error" && "Payment Failed"}
-            </DialogTitle>
-          </DialogHeader>
-
-          {modalStage === "summary" && (
-            <div className="space-y-4">
-              <p>Total to pay something</p>
-              <DialogFooter>
-                <Button
-                  onClick={async () => {
-                    const accessToken = localStorage.getItem("coinbaseAccessToken")!
-                    const brokerType = localStorage.getItem("coinbaseBrokerType")!
-
-                    const result = await client.v1.transferFromCoinbase({
-                      payload: {
-                        accessToken: Redacted.make(accessToken),
-                        brokerType: brokerType as never,
-                        amount: .0001,
-                      },
-                    }).pipe(Effect.runPromise)
-                    if (result._tag === "mfa") {
-                      setPreviewId(result.previewId)
-                      setModalStage("mfa")
-                    } else if (result.content.status === "succeeded") {
-                      setModalStage("success")
-                    } else {
-                      setTransferError("Transfer failed. Try again.")
-                      setModalStage("error")
-                    }
-                  }}
-                >
-                  Confirm Payment
-                </Button>
-              </DialogFooter>
-            </div>
-          )}
-
-          {modalStage === "mfa" && (
-            <div className="space-y-4">
-              <input
-                type="text"
-                placeholder="Enter MFA Code"
-                value={mfaCode}
-                onChange={(e) => setMfaCode(e.target.value)}
-                className="border w-full p-2 rounded"
-              />
-              <DialogFooter>
-                <Button
-                  onClick={async () => {
-                    const accessToken = localStorage.getItem("coinbaseAccessToken")!
-                    const brokerType = localStorage.getItem("coinbaseBrokerType")!
-
-                    const result = await client.v1.transferFromCoinbaseMfa({
-                      payload: {
-                        accessToken: Redacted.make(accessToken),
-                        brokerType: brokerType as never,
-                        previewId: previewId!,
-                        mfaCode,
-                      },
-                    }).pipe(
-                      Effect.map(Struct.get("executeTransferResult")),
-                      Effect.flatMap(Effect.fromNullable),
-                      Effect.runPromise,
-                    )
-                    if (result.status === "succeeded") {
-                      setModalStage("success")
-                    } else {
-                      setTransferError("MFA failed. Try again.")
-                      setModalStage("error")
-                    }
-                  }}
-                >
-                  Confirm MFA
-                </Button>
-              </DialogFooter>
-            </div>
-          )}
-
-          {modalStage === "success" && (
-            <div className="text-center space-y-4">
-              <p>Your payment was processed successfully.</p>
-              <DialogFooter>
-                <Button onClick={() => setIsModalOpen(false)}>Close</Button>
-              </DialogFooter>
-            </div>
-          )}
-
-          {modalStage === "error" && (
-            <div className="text-center space-y-4 text-red-600">
-              <p>{transferError}</p>
-              <DialogFooter>
-                <Button onClick={() => setIsModalOpen(false)}>Close</Button>
-              </DialogFooter>
-            </div>
-          )}
-        </DialogContent>
-      </Dialog> */
-      }
-    </>
+    </div>
   )
 }

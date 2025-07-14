@@ -27,8 +27,6 @@
           "@effect/platform",
           "@effect/platform-browser",
           "@effect/platform-bun",
-          "@effect/sql-drizzle",
-          "@effect/sql-pg",
           "effect"
         ],
         "diagnosticSeverity": {
