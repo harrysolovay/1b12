@@ -8,14 +8,16 @@
     "watch": "tspc -b --watch"
   },
   "devDependencies": {
-    "@effect/language-service": "^0.23.3",
-    "@effect/platform-bun": "^0.69.7",
-    "@tim-smart/openapi-gen": "^0.4.12",
-    "@types/bun": "^1.2.15",
-    "@types/node": "^22.15.30",
-    "@types/react": "~19.0.10",
-    "dprint": "^0.50.0",
-    "effect": "^3.16.4",
+    "@effect/language-service": "^0.23.5",
+    "@effect/platform-bun": "^0.69.16",
+    "@effect/sql-pg": "^0.42.0",
+    "@tim-smart/openapi-gen": "^0.4.13",
+    "@types/bun": "^1.2.18",
+    "@types/node": "^22.16.3",
+    "@types/react": "~19.0.14",
+    "dprint": "^0.50.1",
+    "drizzle-kit": "^0.31.4",
+    "effect": "^3.16.13",
     "ts-patch": "^3.3.0",
     "typescript": "^5.8.3"
   }

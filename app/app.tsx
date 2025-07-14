@@ -14,10 +14,7 @@ export const App = () => {
   const [balances, setBalances] = useState<{
     coinbase?: number
     metamask?: number
-  }>({
-    coinbase: 0,
-    metamask: 0,
-  })
+  }>()
 
   const refreshCoinbaseTokenDetails = async () => {
     const details = coinbaseAccessTokenDetails
@@ -93,13 +90,13 @@ export const App = () => {
       <div className="max-w-4xl mx-auto p-6 space-y-8">
         <div className="flex flex-col sm:flex-row gap-4 justify-end pt-6">
           <div>
-            MetaMask (Balance: {balances.metamask})
+            MetaMask (Balance: {balances?.metamask})
             <Button onClick={OpenLink("metamask")} className="w-full sm:w-auto">
               {metamaskAccessToken ? "Disconnect MetaMask" : "Connect MetaMask"}
             </Button>
           </div>
           <div>
-            Coinbase (Balance: {balances.coinbase})
+            Coinbase (Balance: {balances?.coinbase})
             <Button onClick={OpenLink("coinbase")}>
               {coinbaseAccessTokenDetails ? "Disconnect Coinbase" : "Connect Coinbase"}
             </Button>

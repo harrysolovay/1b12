@@ -7,7 +7,7 @@
   },
   "dependencies": {
     "@1b1/domain": "workspace:*",
-    "@effect/platform": "^0.87.12",
+    "@effect/platform": "^0.87.13",
     "@electric-sql/client": "^1.0.7",
     "@electric-sql/react": "^1.0.7",
     "@fontsource/inconsolata": "^5.2.6",
@@ -49,7 +49,7 @@
     "cmdk": "^1.1.1",
     "date-fns": "^4.1.0",
     "dicons": "^1.1.7",
-    "effect": "^3.16.12",
+    "effect": "^3.16.13",
     "embla-carousel-react": "^8.6.0",
     "framer-motion": "^12.23.3",
     "hono": "4.7.2",

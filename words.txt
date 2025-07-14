@@ -1,5 +1,8 @@
 inconsolata
 linktoken
 meshconnect
+ossp
+pgvector
+tmpfs
 traceparent
 wagmi

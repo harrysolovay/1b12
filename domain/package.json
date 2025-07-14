@@ -7,6 +7,6 @@
   },
   "peerDependencies": {
     "@1b1/experimental_client": "workspace:*",
-    "effect": "^3.16.12"
+    "effect": "^3.16.13"
   }
 }
