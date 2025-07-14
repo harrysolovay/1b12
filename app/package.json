@@ -7,6 +7,7 @@
   },
   "dependencies": {
     "@1b1/domain": "workspace:*",
+    "@clerk/clerk-react": "^5.33.0",
     "@effect/platform": "^0.87.13",
     "@electric-sql/client": "^1.0.7",
     "@electric-sql/react": "^1.0.7",

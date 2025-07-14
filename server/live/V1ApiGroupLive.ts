@@ -1,13 +1,18 @@
-import { Api } from "@1b1/domain"
+import { Api, ApiError } from "@1b1/domain"
 import { make } from "@1b1/experimental_client/Generated"
+import { createClerkClient, verifyToken } from "@clerk/backend"
+import * as Cookies from "@effect/platform/Cookies"
 import * as HttpApiBuilder from "@effect/platform/HttpApiBuilder"
 import * as HttpClient from "@effect/platform/HttpClient"
 import * as HttpClientRequest from "@effect/platform/HttpClientRequest"
+import * as PgDrizzle from "@effect/sql-drizzle/Pg"
 import * as Effect from "effect/Effect"
 import { flow } from "effect/Function"
+import * as Record from "effect/Record"
 import * as Redacted from "effect/Redacted"
+import * as Schema from "effect/Schema"
+import { createRemoteJWKSet, type JWTPayload, jwtVerify } from "jose"
 import assert from "node:assert"
-import type { access } from "node:fs"
 import { ConfigService } from "../ConfigService.ts"
 
 // TODO: Replace with actual user ID retrieval logic
@@ -18,7 +23,19 @@ export const V1ApiGroupLive = HttpApiBuilder.group(
   Api,
   "v1",
   Effect.fn(function*(handlers) {
-    const { clientId, secret, destinationAddress } = yield* ConfigService
+    const db = yield* PgDrizzle.PgDrizzle
+    const {
+      clientId,
+      secret,
+      destinationAddress,
+      clerkPublishableKey,
+      clerkSecret,
+    } = yield* ConfigService
+
+    const clerk = createClerkClient({
+      secretKey: Redacted.value(clerkSecret),
+      publishableKey: clerkPublishableKey,
+    })
 
     const mesh = (yield* HttpClient.HttpClient).pipe(
       HttpClient.mapRequest(flow(
@@ -92,33 +109,57 @@ export const V1ApiGroupLive = HttpApiBuilder.group(
       )
       .handle(
         "getBalances",
-        Effect.fn(function*({ payload: { coinbase, metamask } }) {
-          return yield* Effect.all({
-            coinbase: coinbase
-              ? mesh["POST/api/v1/holdings/get"]({
-                authToken: coinbase,
-                type: "coinbase",
-                includeMarketValue: true,
-              }).pipe(
-                Effect.map(({ content }) =>
-                  content?.cryptocurrencyPositions?.find(({ symbol: symbol_ }) => symbol === symbol_)?.amount ?? 0
-                ),
-              )
-              : Effect.succeed(0),
-            metamask: metamask
-              ? mesh["POST/api/v1/holdings/get"]({
-                authToken: metamask,
-                type: "deFiWallet",
-                includeMarketValue: true,
-              }).pipe(
-                Effect.map(({ content }) =>
-                  content?.cryptocurrencyPositions?.find(({ symbol: symbol_ }) => symbol === symbol_)?.amount ?? 0
-                ),
-              )
-              : Effect.succeed(0),
-          }).pipe(
-            Effect.orDie,
-          )
+        Effect.fn(function*({ payload: {}, request: { cookies } }) {
+          const jwt = Schema.decodeUnknownSync(
+            Schema.Struct({
+              __session: Schema.String.pipe(Schema.optional),
+            }),
+          )(cookies).__session
+          if (typeof jwt === "undefined") {
+            return {
+              coinbase: 0,
+              metamask: 0,
+            }
+          }
+          const { sub } = yield* Effect.tryPromise({
+            try: () =>
+              verifyToken(jwt, {
+                authorizedParties: ["http://localhost:5173"],
+                secretKey: Redacted.value(clerkSecret),
+              }),
+            catch: () => new ApiError(),
+          })
+          console.log({ sub })
+          return {
+            coinbase: 0,
+            metamask: 0,
+          }
+          // return yield* Effect.all({
+          //   coinbase: coinbase
+          //     ? mesh["POST/api/v1/holdings/get"]({
+          //       authToken: coinbase,
+          //       type: "coinbase",
+          //       includeMarketValue: true,
+          //     }).pipe(
+          //       Effect.map(({ content }) =>
+          //         content?.cryptocurrencyPositions?.find(({ symbol: symbol_ }) => symbol === symbol_)?.amount ?? 0
+          //       ),
+          //     )
+          //     : Effect.succeed(0),
+          //   metamask: metamask
+          //     ? mesh["POST/api/v1/holdings/get"]({
+          //       authToken: metamask,
+          //       type: "deFiWallet",
+          //       includeMarketValue: true,
+          //     }).pipe(
+          //       Effect.map(({ content }) =>
+          //         content?.cryptocurrencyPositions?.find(({ symbol: symbol_ }) => symbol === symbol_)?.amount ?? 0
+          //       ),
+          //     )
+          //     : Effect.succeed(0),
+          // }).pipe(
+          //   Effect.orDie,
+          // )
         }),
       )
       .handle(

@@ -5,7 +5,11 @@
   "scripts": {
     "prepare": "ts-patch install -s",
     "build": "tspc -b",
-    "watch": "tspc -b --watch"
+    "watch": "tspc -b -w",
+    "dc:up": "docker compose up",
+    "dc:rm": "docker compose down -v",
+    "dc:re": "bun dc:rm && bun dc:up",
+    "db:init": "rm -rf migrations && bun tasks/ensure_uuid_extension && drizzle-kit generate && drizzle-kit migrate"
   },
   "devDependencies": {
     "@effect/language-service": "^0.23.5",

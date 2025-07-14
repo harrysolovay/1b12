@@ -1,10 +1,13 @@
 import { Button } from "@/components/ui/button"
+import { SignedIn, SignedOut, SignInButton, useAuth, UserButton } from "@clerk/clerk-react"
 import { createLink } from "@meshconnect/web-link-sdk"
 import * as Effect from "effect/Effect"
 import { useEffect, useRef, useState } from "react"
 import { client } from "./client.ts"
 
 export const App = () => {
+  const { isSignedIn, getToken } = useAuth()
+
   const [coinbaseAccessTokenDetails, setCoinbaseAccessTokenDetails] = useState<{
     accessToken: string
     refreshToken: string
@@ -16,24 +19,24 @@ export const App = () => {
     metamask?: number
   }>()
 
-  const refreshCoinbaseTokenDetails = async () => {
-    const details = coinbaseAccessTokenDetails
-      ? await client.v1
-        .refreshCoinbaseToken({
-          payload: coinbaseAccessTokenDetails,
-        })
-        .pipe(Effect.runPromise)
-      : undefined
-    setCoinbaseAccessTokenDetails(details)
-    return details
-  }
+  // const refreshCoinbaseTokenDetails = async () => {
+  //   const details = coinbaseAccessTokenDetails
+  //     ? await client.v1
+  //       .refreshCoinbaseToken({
+  //         payload: coinbaseAccessTokenDetails,
+  //       })
+  //       .pipe(Effect.runPromise)
+  //     : undefined
+  //   setCoinbaseAccessTokenDetails(details)
+  //   return details
+  // }
 
   const refreshBalances = async () => {
-    const details = await refreshCoinbaseTokenDetails()
+    // const details = await refreshCoinbaseTokenDetails()
     return client.v1
       .getBalances({
         payload: {
-          coinbase: details?.accessToken,
+          coinbase: coinbaseAccessTokenDetails?.accessToken,
           metamask: metamaskAccessToken,
         },
       })
@@ -87,6 +90,13 @@ export const App = () => {
 
   return (
     <>
+      <SignedOut>
+        <SignInButton />
+      </SignedOut>
+      <SignedIn>
+        <UserButton />
+      </SignedIn>
+      <button onClick={refreshBalances}>Refresh</button>
       <div className="max-w-4xl mx-auto p-6 space-y-8">
         <div className="flex flex-col sm:flex-row gap-4 justify-end pt-6">
           <div>

@@ -4,6 +4,9 @@ import * as FetchHttpClient from "@effect/platform/FetchHttpClient"
 import * as HttpApiBuilder from "@effect/platform/HttpApiBuilder"
 import * as HttpApiSwagger from "@effect/platform/HttpApiSwagger"
 import * as HttpServer from "@effect/platform/HttpServer"
+import * as PgDrizzle from "@effect/sql-drizzle/Pg"
+import * as PgClient from "@effect/sql-pg/PgClient"
+import * as Config from "effect/Config"
 import * as Effect from "effect/Effect"
 import * as Layer from "effect/Layer"
 import { ConfigService } from "./ConfigService.ts"
@@ -17,17 +20,22 @@ const ApiLive = HttpApiBuilder.api(Api).pipe(
 
 HttpApiBuilder.serve().pipe(
   HttpServer.withLogAddress,
+  Layer.provide(CorsLive),
   Layer.provide(HttpApiBuilder.middlewareCors()),
   Layer.provide(HttpApiSwagger.layer()),
   // Layer.provide(OtelLive),
   Layer.provide(ApiLive),
-  Layer.provide(CorsLive),
   Layer.provide(ConfigService.Default),
   Layer.provide(FetchHttpClient.layer),
   Layer.provide(BunHttpServer.layer({
     port: 3000,
   })),
   Layer.provide(FetchHttpClient.layer),
+  Layer.provide(PgDrizzle.layer.pipe(
+    Layer.provide(PgClient.layerConfig({
+      url: Config.redacted("DATABASE_URL"),
+    })),
+  )),
   Layer.launch,
   Effect.runPromise,
 )
