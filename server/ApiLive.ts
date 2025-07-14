@@ -82,10 +82,7 @@ export const ApiLive = HttpApiBuilder.group(
       .handle(
         "getUserInfo",
         Effect.fn(function*() {
-          const tokens = yield* maybeAccessTokens.pipe(
-            Effect.tap(Console.log),
-            Effect.orDie,
-          )
+          const tokens = yield* maybeAccessTokens.pipe(Effect.orDie)
           if (!tokens) {
             return {
               coinbase: {
@@ -154,7 +151,8 @@ export const ApiLive = HttpApiBuilder.group(
           }).pipe(
             Effect.orDie,
           )
-          return yield* mesh["POST/api/v1/transfers/managed/preview"]({
+          console.log("HERE")
+          const g = yield* mesh["POST/api/v1/transfers/managed/preview"]({
             fromAuthToken,
             fromType,
             symbol,
@@ -162,11 +160,11 @@ export const ApiLive = HttpApiBuilder.group(
             networkId: ethereumNetworkId,
             toAddress: destinationAddress,
           }).pipe(
-            Effect.tap(Console.log),
             Effect.map(({ content }) => content?.previewResult),
-            Effect.flatMap(Effect.fromNullable),
             Effect.orDie,
           )
+          console.log({ g })
+          return g!
         }),
       )
       .handle(

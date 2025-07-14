@@ -1,27 +1,25 @@
 import { Button } from "@/components/ui/button"
+import { PreviewTransferResult } from "@1b1/experimental_client/Generated"
 import { SignedIn, SignedOut, SignInButton, useAuth, UserButton } from "@clerk/clerk-react"
 import { type AccountToken, createLink } from "@meshconnect/web-link-sdk"
 import * as Effect from "effect/Effect"
-import { useRef } from "react"
+import { useRef, useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "react-query"
 import { client } from "./client.ts"
 
 export const App = () => {
   const queryClient = useQueryClient()
   const { isSignedIn } = useAuth()
+  const [transferPreview, setTransferPreview] = useState<typeof PreviewTransferResult.Type>()
 
   const { data: userInfo } = useQuery({
     queryKey: ["balances", isSignedIn],
-    queryFn: async () =>
-      isSignedIn
-        ? client.v1.getUserInfo().pipe(Effect.runPromise)
-        : undefined,
+    queryFn: () => isSignedIn ? client.v1.getUserInfo().pipe(Effect.runPromise) : undefined,
   })
-  console.log({ userInfo })
 
   const createCoinbaseLinkToken = useMutation({
     mutationKey: ["createCoinbaseLinkToken"],
-    mutationFn: async () =>
+    mutationFn: () =>
       client.v1
         .createLinkToken({
           payload: {
@@ -34,7 +32,7 @@ export const App = () => {
 
   const saveCoinbaseAccessToken = useMutation({
     mutationKey: ["saveCoinbaseAccessToken"],
-    mutationFn: async (token: AccountToken) =>
+    mutationFn: (token: AccountToken) =>
       client.v1
         .saveCoinbaseTokens({
           payload: {
@@ -46,9 +44,22 @@ export const App = () => {
     onSuccess: () => queryClient.invalidateQueries(["balances"]),
   })
 
+  const createMetamaskLinkToken = useMutation({
+    mutationKey: ["createMetamaskLinkToken"],
+    mutationFn: () =>
+      client.v1
+        .createLinkToken({
+          payload: {
+            source: "metamask",
+          },
+        })
+        .pipe(Effect.runPromise)
+        .then(meshLinkRef.current.openLink),
+  })
+
   const saveMetamaskAccessToken = useMutation({
     mutationKey: ["saveCoinbaseAccessToken"],
-    mutationFn: async (token: AccountToken) =>
+    mutationFn: (token: AccountToken) =>
       client.v1
         .saveMetamaskToken({
           payload: {
@@ -59,17 +70,17 @@ export const App = () => {
     onSuccess: () => queryClient.invalidateQueries(["balances"]),
   })
 
-  const createMetamaskLinkToken = useMutation({
-    mutationKey: ["createMetamaskLinkToken"],
-    mutationFn: async () =>
+  const configureAndPreviewTransfer = useMutation({
+    mutationKey: ["configureAndPreviewTransfer"],
+    mutationFn: () =>
       client.v1
-        .createLinkToken({
+        .configureAndPreviewTransfer({
           payload: {
-            source: "metamask",
+            source: "coinbase",
           },
         })
         .pipe(Effect.runPromise)
-        .then(meshLinkRef.current.openLink),
+        .then(setTransferPreview),
   })
 
   const meshLinkRef = useRef(createLink({
@@ -118,6 +129,12 @@ export const App = () => {
               : <Button onClick={() => createCoinbaseLinkToken.mutate()}>Connect Coinbase</Button>}
           </div>
         </div>
+      </div>
+      <div>
+        <Button onClick={() => configureAndPreviewTransfer.mutate()}>
+          Configure and Preview Transfer
+          <div>Preview: {JSON.stringify(transferPreview)}</div>
+        </Button>
       </div>
     </div>
   )
